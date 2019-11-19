@@ -98,16 +98,17 @@ class FluidFlow:
                 self.omega_values[I])
 
     def update_omega_interior(self, w):
+        old_omega_values = self.omega_values
         for I in self.Interior_points:
             i, j = self.get_coords(I)
             d_psi_d_y = self.psi_values[self.get_superindex(i,j+1)] - \
                 self.psi_values[self.get_superindex(i,j-1)]/(2*self.h)
-            d_omega_d_y = self.omega_values[self.get_superindex(i,j+1)] - \
-                self.omega_values[self.get_superindex(i,j-1)]/(2*self.h)
+            d_omega_d_y = old_omega_values[self.get_superindex(i,j+1)] - \
+                old_omega_values[self.get_superindex(i,j-1)]/(2*self.h)
             d_psi_d_x = self.psi_values[self.get_superindex(i+1,j)] - \
                 self.psi_values[self.get_superindex(i-1,j)]/(2*self.h)
-            d_omega_d_x = self.omega_values[self.get_superindex(i+1,j)] - \
-                self.omega_values[self.get_superindex(i-1,j)]/(2*self.h)
+            d_omega_d_x = old_omega_values[self.get_superindex(i+1,j)] - \
+                old_omega_values[self.get_superindex(i-1,j)]/(2*self.h)
 
             self.omega_values[I] = (1-w)*self.omega_values[I] + \
                 (w/4)*(self.omega_values[self.get_superindex(i+1,j)] + \
@@ -161,7 +162,8 @@ class FluidFlow:
                 whichbound='D'
             elif i==self.e_points+self.c_points-2 and j<=self.d_points:
                 whichbound='B'
-            else:
+            elif i<=self.e_points+self.c_points-2 and i >= self.e_points \
+                    and j==self.d_points: #C bounds
                 whichbound='C'
             return whichbound
 
@@ -250,9 +252,9 @@ def main():
     V_0 = 1
     nu = 0.1
     region_dim = 1.0
-    front_of_plate = 0.2
-    back_of_plate = 0.35
-    top_of_plate = 0.55
+    front_of_plate = 0.25
+    back_of_plate = 0.75
+    top_of_plate = 0
     L = int(sys.argv[1])
     ff = FluidFlow(V_0, nu, region_dim, front_of_plate,
         back_of_plate - front_of_plate, top_of_plate, L)
