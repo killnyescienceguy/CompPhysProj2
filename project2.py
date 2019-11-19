@@ -2,6 +2,8 @@ import math
 import numpy as np
 import scipy.linalg as sla
 import matplotlib.pyplot as plt
+from scipy.integrate import quad
+import sys
 
 class FluidFlow:
     def __init__(self, V_0, nu, a, b, c, d, L):
@@ -15,28 +17,23 @@ class FluidFlow:
         self.h = a/L
         self.e_points = math.ceil(L*b/a)+1 #number points on E boundary
         self.c_points = math.ceil(L*c/a)+1 #'' ''
-        self.a_points = int(L*(a-b-c)/a)+1#'' ''
-        self.f_points=L+1#'' ''
+        self.a_points = int(L*(a-b-c)/a)+1
+        self.f_points=L+1
         self.d_points=int(L*d/a)
-        self.h_points=math.ceil(L*(a-d)/a)+1 #number of points above obstruction
-        # print("e_points: " + str(self.e_points))
-        # print("c_points: " + str(self.c_points))
-        # print("a_points: " + str(self.a_points))
-        # print("f_points: " + str(self.f_points))
-        # print("d_points: " + str(self.d_points))
-        # print("h_points: " + str(self.h_points))
+        self.h_points=math.ceil(L*(a-d)/a)+1 #num of points above obstruction
         self.N = self.get_superindex(L, L) + 1
         self.psi_values = np.zeros((self.N)) #stream function matrix
         self.omega_values = np.zeros((self.N)) #vorticity matrix
         self.sortboundaries()
 
      # n is the number of relaxations performed, w is the overrelaxation factor
-    def SOR(self, n, w=1.5):
+    def SOR(self, n, w = 1.5):
         self.initialize_free_flow()
         self.apply_boundary_cond(["A", "B", "C", "D", "E", "F", "G", "H"])
         for i in range(n):
-            self.update_psi_interior()
-            self.update_omega_interior()
+            self.update_psi_interior(w)
+            self.update_omega_interior(w)
+            # self.residual_norm()
             self.apply_boundary_cond(["B", "C", "D", "H"])
 
     def initialize_free_flow(self):
@@ -64,13 +61,13 @@ class FluidFlow:
             if boundary == "B":
                 for I in self.Bbound_points:
                     i, j = self.get_coords(I)
-                    psi = self.psi_values[self.get_superindex(i - 1, j)]
+                    psi = self.psi_values[self.get_superindex(i + 1, j)]
                     self.psi_values[I] = 0
                     self.omega_values[I] = -2/(self.h**2)*psi
             if boundary == "D":
                 for I in self.Dbound_points:
                     i, j = self.get_coords(I)
-                    psi = self.psi_values[self.get_superindex(i + 1, j)]
+                    psi = self.psi_values[self.get_superindex(i - 1, j)]
                     self.psi_values[I] = 0
                     self.omega_values[I] = -2/(self.h**2)*psi
             if boundary == "G": #set to free flow conditions
@@ -104,21 +101,35 @@ class FluidFlow:
         for I in self.Interior_points:
             i, j = self.get_coords(I)
             d_psi_d_y = self.psi_values[self.get_superindex(i,j+1)] - \
-                self.psi_values[self.get_superindex(i,j-1)]
+                self.psi_values[self.get_superindex(i,j-1)]/(2*self.h)
             d_omega_d_y = self.omega_values[self.get_superindex(i,j+1)] - \
-                self.omega_values[self.get_superindex(i,j-1)]
+                self.omega_values[self.get_superindex(i,j-1)]/(2*self.h)
             d_psi_d_x = self.psi_values[self.get_superindex(i+1,j)] - \
-                self.psi_values[self.get_superindex(i-1,j)]
+                self.psi_values[self.get_superindex(i-1,j)]/(2*self.h)
             d_omega_d_x = self.omega_values[self.get_superindex(i+1,j)] - \
-                self.omega_values[self.get_superindex(i-1,j)]
+                self.omega_values[self.get_superindex(i-1,j)]/(2*self.h)
 
             self.omega_values[I] = (1-w)*self.omega_values[I] + \
                 (w/4)*(self.omega_values[self.get_superindex(i+1,j)] + \
                 self.omega_values[self.get_superindex(i-1,j)] + \
                 self.omega_values[self.get_superindex(i,j+1)] + \
                 self.omega_values[self.get_superindex(i,j-1)] - \
-                (1/(2*nu))*(d_psi_d_y*d_omega_d_x - d_psi_d_x*d_omega_d_y))
+                (1/(self.nu))*(d_psi_d_y*d_omega_d_x - d_psi_d_x*d_omega_d_y))
 
+    def residual(self,i, j):
+        laplacian_psi_omega=self.psi_values[self.get_superindex(i+1,j)] + \
+        self.psi_values[self.get_superindex(i-1,j)] + \
+        self.psi_values[self.get_superindex(i,j+1)] + \
+        self.psi_values[self.get_superindex(i,j-1)] - \
+        4*self.psi_values[self.get_superindex(i,j)] + \
+        self.omega_values[self.get_superindex(i,j)]
+
+        return laplacian_psi_omega
+
+    def residual_norm(self):
+        r_psi=self.residual()
+        i_integran=quad(r_psi**2,)
+        return
 
     def onboundary(self,I,specific=False): #checks if point on onboundary
         onbound=False
@@ -127,10 +138,12 @@ class FluidFlow:
         if specific==False:
             if i==0 or i==L or j==0 or j==L: #F boundary
                 onbound=True
-            elif i==self.e_points-1 or i==self.e_points+self.c_points-2:
-                #D,B bounds
+            elif i==self.e_points-1 and j<=self.d_points: #D bound
                 onbound=True
-            elif j==self.d_points-1: #C bounds
+            elif i==self.e_points+self.c_points-2 and j<=self.d_points: #B bound
+                onbound=True
+            elif i<=self.e_points+self.c_points-2 and i >= self.e_points \
+                    and j==self.d_points: #C bounds
                 onbound=True
             return onbound
         else:
@@ -140,13 +153,13 @@ class FluidFlow:
                 whichbound='H'
             elif j==0 and i<=self.e_points-1: #E boundary
                 whichbound='E'
-            elif j==0 and i>self.e_points+self.c_points-2: #A boundary
+            elif j==0 and i>=self.e_points+self.c_points-2: #A boundary
                 whichbound='A'
             elif j==L: #G boundary
                 whichbound='G'
-            elif j==self.e_points-1 and i<=self.d_points: #D boundary
+            elif i==self.e_points-1 and j<=self.d_points : #D boundary
                 whichbound='D'
-            elif j==self.e_points+self.c_points-2 and i<=self.d_points:
+            elif i==self.e_points+self.c_points-2 and j<=self.d_points:
                 whichbound='B'
             else:
                 whichbound='C'
@@ -183,13 +196,6 @@ class FluidFlow:
                     self.Gbound_points.append(I)
                 elif self.onboundary(I,True)=='H':
                     self.Hbound_points.append(I)
-
-    def indextest(self):
-        N = self.get_superindex(self.L, self.L) + 1
-        for I in range(self.N):
-            i, j = self.get_coords(I)
-            print(str(I) + " (i, j) = "  + str(i) + ", " + str(j) + "  I=" + str(self.get_superindex(i, j)))
-
 
     def get_superindex(self, i, j):
         if i < self.e_points: #shifted to 0, incudes D boundary
@@ -228,20 +234,32 @@ class FluidFlow:
         for I in range(self.N):
             i, j = self.get_coords(I)
             matrix[self.L - j][i] = self.psi_values[I]
+        np.set_printoptions(precision=3)
         print(matrix)
+
+    def print_omega(self):
+        matrix = np.zeros((self.L+1, self.L+1))
+        for I in range(self.N):
+            i, j = self.get_coords(I)
+            matrix[self.L - j][i] = self.omega_values[I]
+        np.set_printoptions(precision=3)
+        print(matrix)
+
 
 def main():
     V_0 = 1
     nu = 0.1
     region_dim = 1.0
-    front_of_plate = 0.0
-    back_of_plate = 0.0
-    top_of_plate = 0.0
-    L = 3
+    front_of_plate = 0.2
+    back_of_plate = 0.35
+    top_of_plate = 0.55
+    L = int(sys.argv[1])
     ff = FluidFlow(V_0, nu, region_dim, front_of_plate,
         back_of_plate - front_of_plate, top_of_plate, L)
-    ff.SOR(0)
-    print(ff.print_psi())
+    num_relaxations = int(sys.argv[2])
+    ff.SOR(num_relaxations)
+    ff.print_psi()
+    ff.print_omega()
 
 if __name__ == "__main__":
     main()
