@@ -69,7 +69,7 @@ class FluidFlow:
             self.residual_matrix[i][j] = -4*self.psi_matrix[i][j] + \
             self.psi_matrix[i+1][j] + self.psi_matrix[i-1][j] + \
             self.psi_matrix[i][j+1] + self.psi_matrix[i][j-1] + \
-            self.omega_matrix[i][j]
+            self.h*self.h*self.omega_matrix[i][j]
 
     def residual_norm(self):
         sum = 0
@@ -203,6 +203,22 @@ class FluidFlow:
         ax.set_zlabel(r'Residual')
         ax.set_title(r"Surface plot of the residual versus $x$ and $y$")
         plt.show()
+
+def residual_norm_vs_w():
+    V_0 = 1
+    nu = 0.1
+    region_dim = 1.0
+    front_of_plate = 0.25
+    back_of_plate = 0.55
+    top_of_plate = 0.5
+    L = int(sys.argv[1])
+    num_relaxations = int(sys.argv[2])
+    for i in range(3):
+        w = 0.25 + 0.25*i
+        ff = FluidFlow(V_0, nu, region_dim, front_of_plate, back_of_plate - front_of_plate, top_of_plate, L)
+        ff.SOR(num_relaxations, w)
+        ff.compute_residual()
+        print("residual norm: " + str(ff.residual_norm()))
 
 def main():
     V_0 = 1
