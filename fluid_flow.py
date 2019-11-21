@@ -33,15 +33,16 @@ class FluidFlow:
      # n is the number of relaxations performed, w is the overrelaxation factor
     def SOR(self, n, w = 1.5):
         self.initialize_free_flow()
-        self.apply_boundary_cond(["A", "B", "C", "D", "E", "F", "G", "H"])
+        self.apply_boundary_cond(["A", "E", "F", "G", "H"])
         self.print_psi()
         self.print_omega()
         for i in range(n):
             self.update_psi_interior(w)
-            self.update_omega_interior(w)
-            self.apply_boundary_cond(["B", "C", "D", "H"])
+            self.apply_boundary_cond(["B", "C", "D"])
             self.print_psi()
             self.print_omega()
+            self.update_omega_interior(w)
+            self.apply_boundary_cond(["H"])
 
     def update_psi_interior(self, w):
         for point in self.Interior_points:
@@ -54,13 +55,17 @@ class FluidFlow:
                 self.omega_matrix[i][j])
 
     def update_omega_interior(self, w):
-        old_omega_matrix = self.omega_matrix
+        old_omega_matrix = self.omega_matrix.copy()
         for point in self.Interior_points:
             i, j = point[0], point[1]
             d_psi_d_y = (self.psi_matrix[i][j+1] - self.psi_matrix[i][j-1])/(2*self.h)
             d_omega_d_y = (old_omega_matrix[i][j+1] - old_omega_matrix[i][j-1])/(2*self.h)
             d_psi_d_x = (self.psi_matrix[i+1][j] - self.psi_matrix[i-1][j])/(2*self.h)
             d_omega_d_x = (old_omega_matrix[i+1][j] - old_omega_matrix[i-1][j])/(2*self.h)
+            print("d_psi_d_y: " + str(d_psi_d_y))
+            print("d_omega_d_y: " + str(d_omega_d_y))
+            print("d_psi_d_x: " + str(d_psi_d_x))
+            print("d_omega_d_x: " + str(d_omega_d_x))
 
             self.omega_matrix[i][j] = (1-w)*self.omega_matrix[i][j] + \
                 (w/4)*(self.omega_matrix[i+1][j] + self.omega_matrix[i-1][j] + \
@@ -110,14 +115,14 @@ class FluidFlow:
                 for coords in self.Bbound_points:
                     i, j = coords[0], coords[1]
                     psi = self.psi_matrix[i+1][j]
-                    self.psi_matrix[i][j] = 0
                     self.omega_matrix[i][j] = -2/(self.h**2)*psi
+                    self.psi_matrix[i][j] = 0
             if boundary == "D":
                 for coords in self.Dbound_points:
                     i, j = coords[0], coords[1]
                     psi = self.psi_matrix[i-1][j]
-                    self.psi_matrix[i][j] = 0
                     self.omega_matrix[i][j] = -2/(self.h**2)*psi
+                    self.psi_matrix[i][j] = 0
             if boundary == "G": #set to free flow conditions
                 for coords in self.Gbound_points:
                     i, j = coords[0], coords[1]
@@ -171,7 +176,7 @@ class FluidFlow:
                     elif i==self.before_plate+self.on_plate-1:
                         self.Bbound_points.append((i,j)) #B boundary
                     else:
-                        self.Plate_interior_points.append((i,j))
+                        self.Plate_interior_points.append((i,j)) # interior of plate
                 else:
                     self.Interior_points.append((i,j))
 
