@@ -34,13 +34,9 @@ class FluidFlow:
     def SOR(self, n, w = 1.5):
         self.initialize_free_flow()
         self.apply_boundary_cond(["A", "E", "F", "G", "H"])
-        self.print_psi()
-        self.print_omega()
         for i in range(n):
             self.update_psi_interior(w)
             self.apply_boundary_cond(["B", "C", "D"])
-            self.print_psi()
-            self.print_omega()
             self.update_omega_interior(w)
             self.apply_boundary_cond(["H"])
 
@@ -51,26 +47,21 @@ class FluidFlow:
                 (w/4)*(self.psi_matrix[i+1][j] + \
                 self.psi_matrix[i-1][j] + \
                 self.psi_matrix[i][j+1] + \
-                self.psi_matrix[i][j-1] - \
-                self.omega_matrix[i][j])
+                self.psi_matrix[i][j-1] + \
+                self.h*self.h*self.omega_matrix[i][j])
 
     def update_omega_interior(self, w):
-        old_omega_matrix = self.omega_matrix.copy()
         for point in self.Interior_points:
             i, j = point[0], point[1]
             d_psi_d_y = (self.psi_matrix[i][j+1] - self.psi_matrix[i][j-1])/(2*self.h)
-            d_omega_d_y = (old_omega_matrix[i][j+1] - old_omega_matrix[i][j-1])/(2*self.h)
+            d_omega_d_y = (self.omega_matrix[i][j+1] - self.omega_matrix[i][j-1])/(2*self.h)
             d_psi_d_x = (self.psi_matrix[i+1][j] - self.psi_matrix[i-1][j])/(2*self.h)
-            d_omega_d_x = (old_omega_matrix[i+1][j] - old_omega_matrix[i-1][j])/(2*self.h)
-            print("d_psi_d_y: " + str(d_psi_d_y))
-            print("d_omega_d_y: " + str(d_omega_d_y))
-            print("d_psi_d_x: " + str(d_psi_d_x))
-            print("d_omega_d_x: " + str(d_omega_d_x))
+            d_omega_d_x = (self.omega_matrix[i+1][j] - self.omega_matrix[i-1][j])/(2*self.h)
 
             self.omega_matrix[i][j] = (1-w)*self.omega_matrix[i][j] + \
                 (w/4)*(self.omega_matrix[i+1][j] + self.omega_matrix[i-1][j] + \
-                self.omega_matrix[i][j+1] + self.omega_matrix[i][j-1] - \
-                (1/(self.nu))*(d_psi_d_y*d_omega_d_x - d_psi_d_x*d_omega_d_y))
+                self.omega_matrix[i][j+1] + self.omega_matrix[i][j-1] + \
+                self.h*self.h*(1/(self.nu))*(d_psi_d_y*d_omega_d_x - d_psi_d_x*d_omega_d_y))
 
     def compute_residual(self):
         for point in self.Interior_points:
