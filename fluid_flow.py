@@ -39,10 +39,14 @@ class FluidFlow:
         self.initialize_grid()
         for i in range(n):
             self.update_psi_interior(w)
-            self.apply_boundary_cond(["B", "C", "D"])
+            self.apply_boundary_cond(["B", "C", "D", "Obstruction"])
             self.update_omega_interior(w)
-            self.apply_boundary_cond(["H"])
+            self.apply_boundary_cond(["H", "Obstruction"])
         self.update_residual()
+        for i in range(self.L):
+            for j in range(self.L):
+                if self.psi_matrix[i][j]<0:
+                   self.psi_matrix[i][j]=0
 
     # This function updates the interior values of psi according to the
     # overrelaxation factor w.
@@ -140,6 +144,11 @@ class FluidFlow:
                     i, j = point[0], point[1]
                     self.psi_matrix[i][j] = self.psi_matrix[i-1][j]
                     self.omega_matrix[i][j] = self.omega_matrix[i-1][j]
+            if boundary == "Obstruction":
+                for point in self.obstruction_points:
+                    i, j = point[0], point[1]
+                    self.psi_matrix[i][j] = 0
+                    self.omega_matrix[i][j] = 0
 
     # This function sorts each vertex as a pair of coordinates into whatever
     # boundary it lies on or into the interior.
@@ -147,6 +156,7 @@ class FluidFlow:
         L=self.L
         self.Interior_points=[]
         self.Plate_interior_points=[]
+        self.obstruction_points=[]
         self.Abound_points=[]
         self.Bbound_points=[]
         self.Cbound_points=[]
@@ -178,7 +188,7 @@ class FluidFlow:
                     elif i==self.before_plate+self.on_plate-1:
                         self.Bbound_points.append((i,j)) #B boundary
                     else:
-                        self.Plate_interior_points.append((i,j)) # interior of plate
+                        self.obstruction_points.append((i,j)) # interior of plate
                 else:
                     self.Interior_points.append((i,j))
 
@@ -222,26 +232,43 @@ class FluidFlow:
         X, Y = np.meshgrid(x_values, y_values)
 
         fig,ax=plt.subplots(1,1)
-        cp = ax.contourf(Y, X, self.psi_matrix)
+        levels = np.arange(0,1.1,0.05)
+        cp = ax.contourf(Y, X, self.psi_matrix,levels=levels)
         fig.colorbar(cp) # Add a colorbar to a plot
         ax.set_title('Filled Contours Plot')
         ax.set_xlabel('x')
         ax.set_ylabel('y')
-        ax.set_title(r"Contour plot of the psi versus $x$ and $y$")
+        ax.set_title(r"$\psi$")
         plt.show()
 
-    def residual_norm_vs_w(self, w_0, w_f, n, num_relaxations):
+    def vorticity_contour_plot(self):
+        x_values = np.linspace(0, 1.0, self.L+1)
+        y_values = np.linspace(0, 1.0, self.L+1)
+        X, Y = np.meshgrid(x_values, y_values)
+
+        fig,ax=plt.subplots(1,1)
+        levels = np.arange(-1,1,0.05)
+        cp = ax.contourf(Y, X, 0.1*self.omega_matrix)
+        fig.colorbar(cp) # Add a colorbar to a plot
+        ax.set_title('Filled Contours Plot')
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        ax.set_title(r"$\omega$")
+        plt.show()
+
+    def residual_norm_vs_w(self, w_0, w_f, n, num_relaxations, graphs=False):
         w_values = np.linspace(w_0, w_f, n)
         res_norm_values = np.zeros((n))
         for i in range(n):
             self.SOR(num_relaxations, w_values[i])
             res_norm_values[i] = self.residual_norm()
         print("optimal value of w: " + str(w_values[np.argmin(res_norm_values)]))
-        plt.plot(w_values, res_norm_values)
-        plt.xlabel(r'$w$')
-        plt.ylabel(r'Residual Norm $R$')
-        plt.title(r'Plot of Residual Norm $R$ as a function of $w$')
-        plt.show()
+        if graphs==True:
+            plt.plot(w_values, res_norm_values)
+            plt.xlabel(r'$w$')
+            plt.ylabel(r'Residual Norm $R$')
+            plt.title(r'Plot of Residual Norm $R$ as a function of $w$')
+            plt.show()
 
 
 def main():
@@ -250,17 +277,19 @@ def main():
     region_dim = 1.0
     front_of_plate = 0.25
     back_of_plate = 0.55
-    top_of_plate = 0.3
+    top_of_plate = float(sys.argv[4])
+    w=float(sys.argv[3])
     L = int(sys.argv[1])
     ff = FluidFlow(V_0, nu, region_dim, front_of_plate,
         back_of_plate - front_of_plate, top_of_plate, L)
     num_relaxations = int(sys.argv[2])
 
-    ff.SOR(num_relaxations)
+    ff.SOR(num_relaxations,w)
 
-    ff.graph_residual()
+    #ff.graph_residual()
     ff.fluid_flow_contour_plot()
-    ff.residual_norm_vs_w(1.45, 1.6, 10, num_relaxations)
+    ff.vorticity_contour_plot()
+    #ff.residual_norm_vs_w(1, 2, 20, num_relaxations)
 
 
 if __name__ == "__main__":
