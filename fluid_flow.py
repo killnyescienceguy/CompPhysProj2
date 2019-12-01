@@ -24,24 +24,125 @@ class FluidFlow:
         self.after_plate = L + 1 - (self.before_plate + self.on_plate)
         self.plate_height = int(L*d/a)
 
-        self.sortboundaries()
+        self.sort_points()
+        self.initialize_grid()
 
+    # This function sorts each vertex as a pair of coordinates into whatever
+    # boundary it lies on or into the interior.
+    def sort_points(self):
+        L=self.L
+        self.Interior_points=[]
+        self.Plate_interior_points=[]
+        self.Abound_points=[]
+        self.Bbound_points=[]
+        self.Cbound_points=[]
+        self.Dbound_points=[]
+        self.Ebound_points=[]
+        self.Fbound_points=[]
+        self.Gbound_points=[]
+        self.Hbound_points=[]
+        for i in range(self.L+1):
+            for j in range(self.L+1):
+                if i==0: #F boundary
+                    self.Fbound_points.append((i,j))
+                elif i==L: #H boundary
+                    self.Hbound_points.append((i,j))
+                elif j==L: #G boundary
+                    self.Gbound_points.append((i,j))
+                elif j==0 and i<self.before_plate: #E boundary
+                    self.Ebound_points.append((i,j))
+                elif j==0 and i>=self.before_plate+self.on_plate: #A boundary
+                    self.Abound_points.append((i,j))
+                elif i >= self.before_plate and i<self.before_plate+self.on_plate   \
+                        and j<=self.plate_height: #grid points on the plate
+                    if self.plate_height == 0:
+                        self.Ebound_points.append((i,j))
+                    elif j==self.plate_height:
+                        self.Cbound_points.append((i,j)) #C boundary
+                    elif i==self.before_plate:
+                        self.Dbound_points.append((i,j)) #D boundary
+                    elif i==self.before_plate+self.on_plate-1:
+                        self.Bbound_points.append((i,j)) #B boundary
+                    else:
+                        self.Plate_interior_points.append((i,j)) # interior of plate
+                else:
+                    self.Interior_points.append((i,j))
+
+
+    #  Initializes matrices storing values of psi, omega, and the residual.
     def initialize_grid(self):
         self.psi_matrix = np.zeros((self.L+1,self.L+1)) #stream function matrix
         self.omega_matrix = np.zeros((self.L+1,self.L+1)) #vorticity matrix
         self.residual_matrix = np.zeros((self.L+1,self.L+1)) #residual matrix
         self.initialize_free_flow()
-        self.apply_boundary_cond(["A", "E", "F", "G", "H"])
+        self.apply_boundary_conditions(["A", "E", "F", "G", "H"])
 
+    # Initializes the interior of the psi and omega matrices to free flow
+    # conditions.
+    def initialize_free_flow(self):
+        for point in self.Interior_points:
+            i, j = point[0], point[1]
+            self.psi_matrix[i][j] = self.V_0 * self.a*j/self.L
+            self.omega_matrix[i][j] = 0
 
-     # n is the number of relaxations performed, w is the overrelaxation factor
+    # Accepts an array of strings, each of which corresponds to a boundary
+    # at which the associated conditions of that boundary are applied.
+    def apply_boundary_conditions(self, boundaries):
+        for boundary in boundaries:
+            if boundary == "A":
+                for point in self.Abound_points:
+                    i, j = point[0], point[1]
+                    self.psi_matrix[i][j] = 0
+                    self.omega_matrix[i][j] = 0
+            if boundary == "E":
+                for point in self.Ebound_points:
+                    i, j = point[0], point[1]
+                    self.psi_matrix[i][j] = 0
+                    self.omega_matrix[i][j] = 0
+            if boundary == "C":
+                for point in self.Cbound_points:
+                    i, j = point[0], point[1]
+                    psi = self.psi_matrix[i][j+1]
+                    self.omega_matrix[i][j] = -2/(self.h**2)*psi
+                    self.psi_matrix[i][j] = 0
+            if boundary == "B":
+                for point in self.Bbound_points:
+                    i, j = point[0], point[1]
+                    psi = self.psi_matrix[i+1][j]
+                    self.omega_matrix[i][j] = -2/(self.h**2)*psi
+                    self.psi_matrix[i][j] = 0
+            if boundary == "D":
+                for point in self.Dbound_points:
+                    i, j = point[0], point[1]
+                    psi = self.psi_matrix[i-1][j]
+                    self.omega_matrix[i][j] = -2/(self.h**2)*psi
+                    self.psi_matrix[i][j] = 0
+            if boundary == "G": #set to free flow conditions
+                for point in self.Gbound_points:
+                    i, j = point[0], point[1]
+                    self.psi_matrix[i][j] = self.V_0 * self.a*j/self.L
+                    self.omega_matrix[i][j] = 0
+            if boundary == "F": #set to free flow conditions
+                for point in self.Fbound_points:
+                    i, j = point[0], point[1]
+                    self.psi_matrix[i][j] = self.V_0 * self.a*j/self.L
+                    self.omega_matrix[i][j] = 0
+            if boundary == "H":
+                for point in self.Hbound_points:
+                    i, j = point[0], point[1]
+                    self.psi_matrix[i][j] = self.psi_matrix[i-1][j]
+                    self.omega_matrix[i][j] = self.omega_matrix[i-1][j]
+
+     # This function performs n relaxations using an over-relaxation factor w.
+     # Each relaxation consists of the following sequence of events: update psi
+     # interior, apply boundary conditions along the boundary, update omega
+     # interior, and lastly apply the boundary conditions along the back wall.
     def SOR(self, n, w = 1.5):
-        self.initialize_grid()
         for i in range(n):
             self.update_psi_interior(w)
-            self.apply_boundary_cond(["B", "C", "D"])
+            self.apply_boundary_conditions(["B", "C", "D"])
             self.update_omega_interior(w)
-            self.apply_boundary_cond(["H"])
+            self.apply_boundary_conditions(["H"])
         self.update_residual()
 
     # This function updates the interior values of psi according to the
@@ -89,118 +190,6 @@ class FluidFlow:
                 sum += self.residual_matrix[i][j]*self.residual_matrix[i][j]
         return math.sqrt(sum)
 
-    def initialize_free_flow(self):
-        for point in self.Interior_points:
-            i, j = point[0], point[1]
-            self.psi_matrix[i][j] = self.V_0 * self.a*j/self.L
-            self.omega_matrix[i][j] = 0
-
-    def apply_boundary_cond(self, boundaries):
-        for boundary in boundaries:
-            if boundary == "A":
-                for point in self.Abound_points:
-                    i, j = point[0], point[1]
-                    self.psi_matrix[i][j] = 0
-                    self.omega_matrix[i][j] = 0
-            if boundary == "E":
-                for point in self.Ebound_points:
-                    i, j = point[0], point[1]
-                    self.psi_matrix[i][j] = 0
-                    self.omega_matrix[i][j] = 0
-            if boundary == "C":
-                for point in self.Cbound_points:
-                    i, j = point[0], point[1]
-                    psi = self.psi_matrix[i][j+1]
-                    self.omega_matrix[i][j] = -2/(self.h**2)*psi
-                    self.psi_matrix[i][j] = 0
-            if boundary == "B":
-                for point in self.Bbound_points:
-                    i, j = point[0], point[1]
-                    psi = self.psi_matrix[i+1][j]
-                    self.omega_matrix[i][j] = -2/(self.h**2)*psi
-                    self.psi_matrix[i][j] = 0
-            if boundary == "D":
-                for point in self.Dbound_points:
-                    i, j = point[0], point[1]
-                    psi = self.psi_matrix[i-1][j]
-                    self.omega_matrix[i][j] = -2/(self.h**2)*psi
-                    self.psi_matrix[i][j] = 0
-            if boundary == "G": #set to free flow conditions
-                for point in self.Gbound_points:
-                    i, j = point[0], point[1]
-                    self.psi_matrix[i][j] = self.V_0 * self.a*j/self.L
-                    self.omega_matrix[i][j] = 0
-            if boundary == "F": #set to free flow conditions
-                for point in self.Fbound_points:
-                    i, j = point[0], point[1]
-                    self.psi_matrix[i][j] = self.V_0 * self.a*j/self.L
-                    self.omega_matrix[i][j] = 0
-            if boundary == "H":
-                for point in self.Hbound_points:
-                    i, j = point[0], point[1]
-                    self.psi_matrix[i][j] = self.psi_matrix[i-1][j]
-                    self.omega_matrix[i][j] = self.omega_matrix[i-1][j]
-
-    # This function sorts each vertex as a pair of coordinates into whatever
-    # boundary it lies on or into the interior.
-    def sortboundaries(self):
-        L=self.L
-        self.Interior_points=[]
-        self.Plate_interior_points=[]
-        self.Abound_points=[]
-        self.Bbound_points=[]
-        self.Cbound_points=[]
-        self.Dbound_points=[]
-        self.Ebound_points=[]
-        self.Fbound_points=[]
-        self.Gbound_points=[]
-        self.Hbound_points=[]
-        for i in range(self.L+1):
-            for j in range(self.L+1):
-                if i==0: #F boundary
-                    self.Fbound_points.append((i,j))
-                elif i==L: #H boundary
-                    self.Hbound_points.append((i,j))
-                elif j==L: #G boundary
-                    self.Gbound_points.append((i,j))
-                elif j==0 and i<self.before_plate: #E boundary
-                    self.Ebound_points.append((i,j))
-                elif j==0 and i>=self.before_plate+self.on_plate: #A boundary
-                    self.Abound_points.append((i,j))
-                elif i >= self.before_plate and i<self.before_plate+self.on_plate   \
-                        and j<=self.plate_height: #grid points on the plate
-                    if self.plate_height == 0:
-                        self.Ebound_points.append((i,j))
-                    elif j==self.plate_height:
-                        self.Cbound_points.append((i,j)) #C boundary
-                    elif i==self.before_plate:
-                        self.Dbound_points.append((i,j)) #D boundary
-                    elif i==self.before_plate+self.on_plate-1:
-                        self.Bbound_points.append((i,j)) #B boundary
-                    else:
-                        self.Plate_interior_points.append((i,j)) # interior of plate
-                else:
-                    self.Interior_points.append((i,j))
-
-
-    def print_psi(self):
-        matrix = np.zeros((self.L+1, self.L+1))
-        for i in range(self.L+1):
-            for j in range(self.L+1):
-                matrix[self.L - j][i] = self.psi_matrix[i][j]
-        np.set_printoptions(precision=3)
-        print('\u03C8:')
-        print(matrix)
-
-    def print_omega(self):
-        matrix = np.zeros((self.L+1, self.L+1))
-        for i in range(self.L+1):
-            for j in range(self.L+1):
-                matrix[self.L - j][i] = self.omega_matrix[i][j]
-        np.set_printoptions(precision=2)
-        print('\u03C9:')
-        print(matrix)
-
     def graph_residual(self):
         x_values = np.linspace(0, 1.0, self.L+1)
         y_values = np.linspace(0, 1.0, self.L+1)
@@ -234,15 +223,33 @@ class FluidFlow:
         w_values = np.linspace(w_0, w_f, n)
         res_norm_values = np.zeros((n))
         for i in range(n):
+            self.initialize_free_flow()
             self.SOR(num_relaxations, w_values[i])
             res_norm_values[i] = self.residual_norm()
         print("optimal value of w: " + str(w_values[np.argmin(res_norm_values)]))
         plt.plot(w_values, res_norm_values)
         plt.xlabel(r'$w$')
-        plt.ylabel(r'Residual Norm $R$')
+        plt.ylabel(r'Residual Norm $R_{\psi}$')
         plt.title(r'Plot of Residual Norm $R$ as a function of $w$')
         plt.show()
 
+    def print_psi(self):
+        matrix = np.zeros((self.L+1, self.L+1))
+        for i in range(self.L+1):
+            for j in range(self.L+1):
+                matrix[self.L - j][i] = self.psi_matrix[i][j]
+        np.set_printoptions(precision=3)
+        print('\u03C8:')
+        print(matrix)
+
+    def print_omega(self):
+        matrix = np.zeros((self.L+1, self.L+1))
+        for i in range(self.L+1):
+            for j in range(self.L+1):
+                matrix[self.L - j][i] = self.omega_matrix[i][j]
+        np.set_printoptions(precision=2)
+        print('\u03C9:')
+        print(matrix)
 
 def main():
     V_0 = 1
@@ -256,11 +263,11 @@ def main():
         back_of_plate - front_of_plate, top_of_plate, L)
     num_relaxations = int(sys.argv[2])
 
-    ff.SOR(num_relaxations)
-
-    ff.graph_residual()
-    ff.fluid_flow_contour_plot()
-    ff.residual_norm_vs_w(1.45, 1.6, 10, num_relaxations)
+    # ff.SOR(num_relaxations)
+    #
+    # ff.graph_residual()
+    # ff.fluid_flow_contour_plot()
+    ff.residual_norm_vs_w(1.65, 1.77, 10, num_relaxations)
 
 
 if __name__ == "__main__":
